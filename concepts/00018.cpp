@@ -65,10 +65,16 @@ concept bool Iterator = requires (T i) {
 };
 
 template<Iterator It, typename Tag>
-concept bool IteratorAtLeast = std::is_base_of_v<std::input_iterator_tag, typename std::iterator_traits<It>::iterator_category>;
+concept bool IteratorAtLeast = std::is_base_of_v<Tag, typename std::iterator_traits<It>::iterator_category>;
 
 template<typename Tag, IteratorAtLeast<Tag> Start, Value End>
 concept bool DenoteRange = requires(Start s, End e) {
+    { s != e } -> PredicateResult;
+    { s == e } -> PredicateResult;
+};
+
+template<IteratorAtLeast<std::input_iterator_tag> Start, Value End>
+concept bool DenoteInputRange = requires(Start s, End e) {
     { s != e } -> PredicateResult;
     { s == e } -> PredicateResult;
 };
@@ -85,7 +91,7 @@ constexpr const concepts::OrderedOnly& min(const concepts::OrderedOnly& a, const
     return b < a ? b : a;
 }
 
-// Unfortunatly cannot use concept introducer with parameter
+// Unfortunatly cannot use template-introduction with parameter
 // packs and same type twice
 // concepts::Predicate{Comparator, T, T}
 // constexpr const T& min(const T& a, const T& b, Comparator comp) {
@@ -97,6 +103,9 @@ constexpr const T& min(const T& a, const T& b, concepts::PredicateValue<T, T> co
    return comp(b, a) ? b : a;
 }
 
+template<typename It>
+using reference_t = typename std::iterator_traits<It>::reference;
+
 // Reimplement std::for_each
 
 // Unfortunatly following code cannot be used:
@@ -106,6 +115,34 @@ namespace foo {
 template<typename InputIt, typename Sentinel, concepts::UnaryFunctionValue<typename std::iterator_traits<InputIt>::reference> F>
 requires concepts::DenoteRange<std::input_iterator_tag, InputIt, Sentinel>
 F for_each( InputIt first, Sentinel last, F f ) {
+    for(; first != last; ++first) {
+        f(*first);
+    }
+    return std::move(f);
+}
+}
+
+namespace foo1 {
+
+// Unable to combine template-introduction and template parameter list?
+// error: too many template-parameter-lists
+// concepts::DenoteInputRange{InputIt, Sentinel}
+// template<concepts::UnaryFunctionValue<reference_t<InputIt>> F>
+// F for_each( InputIt first, Sentinel last, F f ) {
+//     for(; first != last; ++first) {
+//         f(*first);
+//     }
+//     return std::move(f);
+// }
+}
+
+namespace foo2 {
+
+template<typename F, typename It>
+concept bool UnaryFunctionFor = concepts::UnaryFunctionValue<F, reference_t<It>>;
+
+concepts::DenoteInputRange{InputIt, Sentinel}
+UnaryFunctionFor<InputIt> for_each( InputIt first, Sentinel last, UnaryFunctionFor<InputIt> f ) {
     for(; first != last; ++first) {
         f(*first);
     }
